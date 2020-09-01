@@ -1,0 +1,153 @@
+---
+title: "Weight Lift Project"
+author: "Carolina Rios-Trujillo"
+output: html_document
+---
+
+
+## Introduction
+
+According to the information taken from this site (https://www.coursera.org/learn/practical-machine-learning/supplement/PvInj/course-project-instructions-read-first), six male participants aged between 20-28 years, with little weight lifting experience were asked to perform 10 repetitions of the dumbbell biceps curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes (Velloso, et al., 2013).
+
+Knowing this, the goal of the project is to predict the manner in which they did the exercise, using "classe" variable in the training set as the outcome.
+
+We find that estimating a random forest leads us to a perfect prediction.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(data.table)
+library(ggplot2)
+library(caret)
+library(randomForest)
+
+```
+
+## Data processing
+
+```{r}
+# read data
+training <- fread("pml-training.csv") 
+test <- fread("pml-testing.csv")
+
+dim(training); dim(test)
+```
+
+```{r}
+training[, .N, by = classe]
+```
+
+First we split the train data in training and validation sets, using the default partition percentage. Due to the large amount of observations we have, we are able to do that.
+
+```{r}
+# set seed for reproducibility
+set.seed(2206)
+
+# split data
+inTrain <- createDataPartition(training$classe, p = 0.7, list = F)
+train <- training[inTrain, ]
+validation <- training[-inTrain, ]
+```
+
+```{r include=FALSE}
+rm(training)
+```
+
+```{r}
+dim(train); dim(validation)
+```
+This means the train set contains 13,737 observations and 160 variables, and the validation set has 5,885 observations and 160 variables.
+
+Now, we are going to drop from the train data set the factor variables, which give no valuable information to the analysis, also the index variable V1.
+
+```{r}
+factor_vars <- names(train)[sapply(train, is.character)] 
+factor_vars <- factor_vars[1:3]
+
+drop_vars <- c(factor_vars, "V1")
+drop_vars
+```
+```{r include=FALSE}
+train[, classe := as.factor(classe)]
+validation[, classe := as.factor(classe)]
+
+```
+
+
+```{r}
+train <- train[, (drop_vars) := NULL]
+dim(train)
+```
+So we have four less variables by now in the train set.
+
+It is important to identify variables with little variability, because they will likely not be good predictors, so we can use near zero variable function. And we are dropping those.
+
+```{r}
+nzv <- as.data.table(nearZeroVar(train, names = T)) 
+
+train <- train[, (nzv$V1) := NULL]
+```
+
+But it is also important to verify if there are missing values in the data that can affect the training.
+
+```{r}
+sum(is.na(train))
+```
+Here we confirm that there are missing values, so what we are going to do is drop those variables with more than 40% NA's from the train set.
+
+```{r}
+train <- as.data.frame(train)
+train <- train[, which(colMeans(is.na(train)) < 0.4)]
+```
+
+Which  finally guides us to the following dimensions of the data:
+
+```{r}
+dim(train)
+```
+
+## Modeling
+
+As this is a multiclass classification problem, we will try predicting with Random Forest, using the default parameters and randomForest package.
+
+```{r}
+# training rf model
+rf_fit <- randomForest(classe ~., data = train)
+rf_fit
+```
+
+
+```{r}
+# predicting with validation data set
+pr_valid <- predict(rf_fit, validation) 
+confusionMatrix(pr_valid, validation$classe)$overall['Accuracy']
+```
+The model accuracy for validation is 99.9% which implies a pretty good performance out of sample, so we proceed to predict with the test set.
+
+```{r}
+# predicting with test set
+pr_test <- predict(rf_fit, test)
+pr_test
+```
+The above shows the predicted output. 
+
+## Final Notes: 
+
+Since the accuracy is very high, we are not going to predict "classe" variable with any another algorithm. Besides, after taking the course project prediction quiz we conclude we got perfect results from the predictions above, so we can be confident about the model.
+
+
+## Additional information
+
+For more knowledge about the model results we decide to plot the most important features in predicting the manner in which the participants are making the exercises.
+
+```{r}
+varImpPlot(rf_fit,type=2)
+```
+
+
+
+## Dataset Reference
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+
+
+
